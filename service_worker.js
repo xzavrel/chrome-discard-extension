@@ -19,7 +19,8 @@ const ALARM_PERIOD = 1; // minutes – granularity of alarm; actual inactivity t
 // ─── Default settings ────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  autoDiscard: true,           // enable periodic auto-discard by default
+  autoDiscardGrouped: true,    // apply auto-discard to tabs inside tab groups
+  autoDiscardUngrouped: true,  // apply auto-discard to tabs not in any group
   inactivityMinutes: 30,       // discard tabs inactive longer than this
   includePinned: false,        // include pinned tabs
   includeFile: false,          // include file:// tabs
@@ -198,11 +199,11 @@ async function shouldDiscard(tab, settings, groupInfo) {
     return hasIncludeMatch;
   }
 
-  // No include rules — fall back to global inactivity threshold
-  if (!settings.autoDiscard) {
-    // Auto-discard disabled and no include rule matched → protect this tab
-    return false;
-  }
+  // No include rules — fall back to global inactivity threshold.
+  // Check scope: is this tab inside a group or ungrouped?
+  const inGroup = tab.groupId && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE;
+  if (inGroup && !settings.autoDiscardGrouped) return false;
+  if (!inGroup && !settings.autoDiscardUngrouped) return false;
 
   return inactiveMins >= settings.inactivityMinutes;
 }
@@ -372,10 +373,11 @@ async function setupAlarm(settings) {
   await chrome.alarms.clear(ALARM_NAME);
 
   // Run the periodic alarm only when it can actually do something:
-  // – autoDiscard is on (global inactivity-based discard), OR
+  // – at least one scope (grouped/ungrouped) has auto-discard enabled, OR
   // – there are enabled include rules (tab-specific auto-discard)
   const hasIncludeRules = (settings.rules || []).some(r => r.enabled && r.mode === 'include');
-  if (settings.autoDiscard || hasIncludeRules) {
+  const autoDiscardActive = settings.autoDiscardGrouped !== false || settings.autoDiscardUngrouped !== false;
+  if (autoDiscardActive || hasIncludeRules) {
     await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD });
   }
 }
@@ -435,8 +437,42 @@ chrome.tabs.onRemoved.addListener(async tabId => {
   await updateBadge();
 });
 
-chrome.tabs.onUpdated.addListener(async () => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   await updateBadge();
+
+  // Detect a tab being moved into a group (groupId appears in changeInfo)
+  if (!('groupId' in changeInfo)) return;
+  const groupId = changeInfo.groupId;
+  if (!groupId || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return;
+
+  // Only act if the group is currently collapsed
+  const groupInfo = await getGroupInfo(groupId);
+  if (!groupInfo.collapsed) return;
+
+  const settings = await loadSettings();
+  const groupName = groupInfo.name;
+
+  if (groupName && settings.ignoredGroups.includes(groupName)) return;
+
+  const config = findCollapsedConfig(groupName, settings);
+  if (!config) return;
+
+  // Group is collapsed + has collapsedDiscard config — ensure an alarm exists.
+  // The alarm may have already fired (tabs from before were discarded) or may
+  // never have existed. Either way, re-schedule it for the new tab.
+  const alarmName = `collapse-group-${groupId}`;
+  const existingAlarm = await chrome.alarms.get(alarmName);
+  if (existingAlarm) return; // alarm already running — new tab will be caught when it fires
+
+  const delayMins = Number(config.delayMinutes) || 0;
+  if (delayMins > 0) {
+    await chrome.alarms.create(alarmName, { delayInMinutes: delayMins });
+    console.info(`[discarder] Tab added to collapsed group "${groupName}" (alarm re-armed) – discard in ${delayMins} min`);
+  } else {
+    // Delay = 0 → discard the new tab immediately
+    await discardTab(tabId);
+    console.info(`[discarder] Tab added to collapsed group "${groupName}" – discarded immediately`);
+  }
 });
 
 // ─── Tab group collapse tracking ─────────────────────────────────────────────
