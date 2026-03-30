@@ -26,13 +26,22 @@ async function refreshCount() {
 async function refreshAutoStatus() {
   const stored = await chrome.storage.local.get('settings');
   const settings = {
-    autoDiscard: true,
+    autoDiscardGrouped: true,
+    autoDiscardUngrouped: true,
     inactivityMinutes: 30,
     ...(stored.settings || {}),
   };
   const el = document.getElementById('auto-status');
-  if (settings.autoDiscard) {
-    el.textContent = `Auto: on (${settings.inactivityMinutes} min)`;
+  const g = settings.autoDiscardGrouped !== false;
+  const u = settings.autoDiscardUngrouped !== false;
+  if (g && u) {
+    el.textContent = `Auto: all tabs (${settings.inactivityMinutes} min)`;
+    el.classList.add('on');
+  } else if (g) {
+    el.textContent = `Auto: grouped only (${settings.inactivityMinutes} min)`;
+    el.classList.add('on');
+  } else if (u) {
+    el.textContent = `Auto: ungrouped only (${settings.inactivityMinutes} min)`;
     el.classList.add('on');
   } else {
     el.textContent = 'Auto: off';

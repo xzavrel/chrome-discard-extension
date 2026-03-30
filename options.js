@@ -3,7 +3,8 @@
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  autoDiscard: true,
+  autoDiscardGrouped: true,
+  autoDiscardUngrouped: true,
   inactivityMinutes: 30,
   includePinned: false,
   includeFile: false,
@@ -42,16 +43,11 @@ function isValidRegex(pattern) {
 // ─── Render helpers ───────────────────────────────────────────────────────────
 
 function renderGlobal() {
-  document.getElementById('autoDiscard').checked = settings.autoDiscard;
+  document.getElementById('autoDiscardGrouped').checked = settings.autoDiscardGrouped !== false;
+  document.getElementById('autoDiscardUngrouped').checked = settings.autoDiscardUngrouped !== false;
   document.getElementById('inactivityMinutes').value = settings.inactivityMinutes;
   document.getElementById('includePinned').checked = settings.includePinned;
   document.getElementById('includeFile').checked = settings.includeFile;
-  toggleInactivityRow();
-}
-
-function toggleInactivityRow() {
-  document.getElementById('row-inactivity').style.display =
-    document.getElementById('autoDiscard').checked ? 'flex' : 'none';
 }
 
 function renderTagList(listId, items, onRemove) {
@@ -287,8 +283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   renderAll();
 
-  // Global toggles
-  document.getElementById('autoDiscard').addEventListener('change', toggleInactivityRow);
+  // (no master autoDiscard toggle to wire up)
 
   // Tag input – ignored groups
   function addIgnoredGroup() {
@@ -387,7 +382,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Save all settings
   document.getElementById('btn-save').addEventListener('click', async () => {
     // Collect current form values into settings object
-    settings.autoDiscard = document.getElementById('autoDiscard').checked;
+    settings.autoDiscardGrouped = document.getElementById('autoDiscardGrouped').checked;
+    settings.autoDiscardUngrouped = document.getElementById('autoDiscardUngrouped').checked;
     settings.inactivityMinutes = parseInt(document.getElementById('inactivityMinutes').value, 10) || 30;
     settings.includePinned = document.getElementById('includePinned').checked;
     settings.includeFile = document.getElementById('includeFile').checked;
