@@ -217,9 +217,14 @@ async function discardGroupById(groupId, groupName, settings) {
   const excludeRules = (settings.rules || []).filter(r => r.enabled && r.mode === 'exclude');
   let count = 0;
 
+  console.debug(`[discarder] discardGroupById groupId=${groupId} groupName="${groupName}" tabs=${tabs.length}`);
+
   for (const tab of tabs) {
-    const { safe } = globalProtection(tab, settings);
-    if (!safe) continue;
+    const { safe, reason } = globalProtection(tab, settings);
+    if (!safe) {
+      console.debug(`[discarder]   SKIP tab#${tab.id} "${tab.title}" url="${tab.url}" reason="${reason}"`);
+      continue;
+    }
 
     // Honour user exclude rules even on collapsed-group discard
     let excluded = false;
@@ -230,14 +235,18 @@ async function discardGroupById(groupId, groupName, settings) {
       if (rule.field === 'groupName') fieldValue = groupName;
       if (matchesPattern(fieldValue, rule.matchType, rule.pattern)) {
         excluded = true;
+        console.debug(`[discarder]   SKIP tab#${tab.id} excluded by rule pattern="${rule.pattern}"`);
         break;
       }
     }
     if (excluded) continue;
 
+    console.debug(`[discarder]   DISCARD tab#${tab.id} "${tab.title}"`);
     await discardTab(tab.id);
     count++;
   }
+
+  console.debug(`[discarder] discardGroupById done count=${count}`);
   return count;
 }
 
@@ -268,6 +277,8 @@ async function getAllTabsWithGroups(windowId) {
 
 async function discardTab(tabId) {
   try {
+    const tab = await chrome.tabs.get(tabId);
+    console.debug(`[discarder] discarding tab#${tabId} "${tab.title}" <${tab.url}>`);
     await chrome.tabs.discard(tabId);
   } catch (err) {
     // Tab may have closed or already discarded – ignore
@@ -541,6 +552,47 @@ async function handleMessage(message) {
 
 // ─── Initialisation ───────────────────────────────────────────────────────────
 
+/**
+ * On startup, check all currently collapsed groups and schedule discard alarms
+ * for any that match collapsedDiscardGroups config.
+ * This handles the case where Chrome starts with already-collapsed groups,
+ * since tabGroups.onUpdated only fires on state *changes*.
+ * Existing alarms are not overwritten — preserves deadlines across SW restarts.
+ */
+async function scheduleCollapsedGroupAlarms(settings) {
+  let groups;
+  try {
+    groups = await chrome.tabGroups.query({ collapsed: true });
+  } catch {
+    return; // tabGroups API not available (e.g., no groups exist)
+  }
+
+  for (const group of groups) {
+    const groupName = group.title || '';
+    const alarmName = `collapse-group-${group.id}`;
+
+    // ignoredGroups has highest priority
+    if (groupName && settings.ignoredGroups.includes(groupName)) continue;
+
+    const config = findCollapsedConfig(groupName, settings);
+    if (!config) continue;
+
+    // Don't overwrite an already-running alarm (SW restart scenario)
+    const existing = await chrome.alarms.get(alarmName);
+    if (existing) continue;
+
+    const delayMins = Number(config.delayMinutes) || 0;
+    if (delayMins > 0) {
+      await chrome.alarms.create(alarmName, { delayInMinutes: delayMins });
+      console.info(`[discarder] init: group "${groupName}" already collapsed — scheduled discard in ${delayMins} min`);
+    } else {
+      // delayMinutes = 0 → discard immediately on startup
+      await discardGroupById(group.id, groupName, settings);
+      console.info(`[discarder] init: group "${groupName}" already collapsed — discarded immediately`);
+    }
+  }
+}
+
 async function init() {
   await loadActivity();
 
@@ -558,6 +610,7 @@ async function init() {
   const settings = await loadSettings();
   await setupAlarm(settings);
   setupContextMenu();
+  await scheduleCollapsedGroupAlarms(settings);
   await updateBadge();
 }
 
