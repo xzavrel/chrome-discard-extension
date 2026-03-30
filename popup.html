@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tab Discarder</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="popup">
+
+  <header class="popup-header">
+    <span class="popup-logo">⚡</span>
+    <h1>Tab Discarder</h1>
+  </header>
+
+  <div class="status-bar">
+    <span id="match-count" class="status-chip">— tabs eligible</span>
+  </div>
+
+  <div class="action-list">
+    <button id="btn-discard-all" class="action-btn primary">
+      <span class="action-icon">🗑️</span>
+      <span class="action-label">Discard all inactive tabs</span>
+    </button>
+
+    <button id="btn-discard-group" class="action-btn secondary">
+      <span class="action-icon">📂</span>
+      <span class="action-label">Discard current group</span>
+    </button>
+
+    <button id="btn-run-rules" class="action-btn secondary">
+      <span class="action-icon">⚙️</span>
+      <span class="action-label">Run rules now</span>
+    </button>
+  </div>
+
+  <div id="feedback" class="feedback hidden"></div>
+
+  <footer class="popup-footer">
+    <a href="#" id="btn-options">Settings</a>
+    <span class="sep">·</span>
+    <span id="auto-status" class="auto-status">Auto: off</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

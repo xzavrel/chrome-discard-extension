@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tab Discarder – Settings</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="options-page">
+
+  <div class="options-container">
+    <header class="options-header">
+      <span class="options-logo">⚡</span>
+      <div>
+        <h1>Tab Discarder</h1>
+        <p class="subtitle">Settings</p>
+      </div>
+    </header>
+
+    <!-- ── Global ─────────────────────────────────────────── -->
+    <section class="card" id="section-global">
+      <h2>Global settings</h2>
+
+      <label class="toggle-row">
+        <span class="toggle-label">Enable automatic discard</span>
+        <input type="checkbox" id="autoDiscard" />
+        <span class="toggle-slider"></span>
+      </label>
+
+      <div class="field-row" id="row-inactivity">
+        <label for="inactivityMinutes">Inactivity threshold (minutes)</label>
+        <input type="number" id="inactivityMinutes" min="1" max="1440" step="1" />
+      </div>
+
+      <label class="toggle-row">
+        <span class="toggle-label">Include pinned tabs</span>
+        <input type="checkbox" id="includePinned" />
+        <span class="toggle-slider"></span>
+      </label>
+
+      <label class="toggle-row">
+        <span class="toggle-label">Include <code>file://</code> tabs</span>
+        <input type="checkbox" id="includeFile" />
+        <span class="toggle-slider"></span>
+      </label>
+    </section>
+
+    <!-- ── Ignored groups ─────────────────────────────────── -->
+    <section class="card" id="section-groups">
+      <h2>Ignored tab groups</h2>
+      <p class="hint">Tabs in these groups are never discarded.</p>
+      <div class="tag-input-row">
+        <input type="text" id="newIgnoredGroup" placeholder="Group name…" />
+        <button id="btn-add-group" class="btn-small">Add</button>
+      </div>
+      <div id="ignored-groups-list" class="tag-list"></div>
+    </section>
+
+    <!-- ── Ignored URL patterns ───────────────────────────── -->
+    <section class="card" id="section-urls">
+      <h2>Ignored URL patterns</h2>
+      <p class="hint">Tabs whose URL contains any of these substrings are never discarded.</p>
+      <div class="tag-input-row">
+        <input type="text" id="newIgnoredUrl" placeholder="e.g. meet.google.com" />
+        <button id="btn-add-url" class="btn-small">Add</button>
+      </div>
+      <div id="ignored-urls-list" class="tag-list"></div>
+    </section>
+
+    <!-- ── Rules ─────────────────────────────────────────── -->
+    <section class="card" id="section-rules">
+      <h2>Rules</h2>
+      <p class="hint">Rules let you include or exclude specific tabs. <strong>Exclude</strong> rules always win.</p>
+
+      <div id="rules-list" class="rules-list"></div>
+
+      <details class="rule-form-wrapper" id="rule-form-details">
+        <summary id="rule-form-toggle">+ Add rule</summary>
+        <div class="rule-form" id="rule-form">
+          <input type="hidden" id="rule-id" />
+
+          <div class="form-grid">
+            <label>Mode
+              <select id="rule-mode">
+                <option value="include">Include (discard matching)</option>
+                <option value="exclude">Exclude (protect matching)</option>
+              </select>
+            </label>
+
+            <label>Field
+              <select id="rule-field">
+                <option value="url">URL</option>
+                <option value="title">Title</option>
+                <option value="groupName">Group name</option>
+              </select>
+            </label>
+
+            <label>Match type
+              <select id="rule-match-type">
+                <option value="substring">Substring</option>
+                <option value="regex">Regex</option>
+              </select>
+            </label>
+
+            <label>Pattern
+              <input type="text" id="rule-pattern" placeholder="e.g. docs.google.com" />
+            </label>
+
+            <label>Min. inactive (min, 0 = any)
+              <input type="number" id="rule-min-inactive" min="0" max="1440" step="1" value="0" />
+            </label>
+
+            <label class="toggle-row inline">
+              <span class="toggle-label">Enabled</span>
+              <input type="checkbox" id="rule-enabled" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div id="regex-error" class="error-msg hidden">⚠ Invalid regex pattern</div>
+
+          <div class="rule-form-actions">
+            <button id="btn-save-rule" class="btn-primary">Save rule</button>
+            <button id="btn-cancel-rule" class="btn-ghost">Cancel</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ── Export / Import ────────────────────────────────── -->
+    <section class="card" id="section-export">
+      <h2>Backup</h2>
+      <div class="export-row">
+        <button id="btn-export" class="btn-secondary">Export settings</button>
+        <button id="btn-import" class="btn-secondary">Import settings</button>
+        <input type="file" id="import-file" accept=".json" hidden />
+      </div>
+    </section>
+
+    <div class="save-bar">
+      <button id="btn-save" class="btn-primary large">Save settings</button>
+      <span id="save-status" class="save-status hidden">✔ Saved</span>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
