@@ -369,10 +369,15 @@ async function updateBadge() {
 // ─── Alarm handling ───────────────────────────────────────────────────────────
 
 async function setupAlarm(settings) {
-  // Always keep the periodic alarm running — rules need it even when the
-  // global inactivity threshold (autoDiscard) is turned off.
   await chrome.alarms.clear(ALARM_NAME);
-  await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD });
+
+  // Run the periodic alarm only when it can actually do something:
+  // – autoDiscard is on (global inactivity-based discard), OR
+  // – there are enabled include rules (tab-specific auto-discard)
+  const hasIncludeRules = (settings.rules || []).some(r => r.enabled && r.mode === 'include');
+  if (settings.autoDiscard || hasIncludeRules) {
+    await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD });
+  }
 }
 
 chrome.alarms.onAlarm.addListener(async alarm => {
@@ -458,9 +463,13 @@ chrome.tabGroups.onUpdated.addListener(async group => {
   if (group.collapsed) {
     const delayMins = Number(config.delayMinutes) || 0;
     if (delayMins > 0) {
-      // Schedule a one-shot alarm; Chrome persists it even if SW is killed
-      await chrome.alarms.create(alarmName, { delayInMinutes: delayMins });
-      console.info(`[discarder] Group "${groupName}" collapsed – discard in ${delayMins} min`);
+      // Only create alarm on first collapse — guard against repeated onUpdated
+      // events for the same group (title/color changes while still collapsed)
+      const existingAlarm = await chrome.alarms.get(alarmName);
+      if (!existingAlarm) {
+        await chrome.alarms.create(alarmName, { delayInMinutes: delayMins });
+        console.info(`[discarder] Group "${groupName}" collapsed – discard in ${delayMins} min`);
+      }
     } else {
       // Delay is 0 → discard immediately
       await discardGroupById(group.id, groupName, settings);
