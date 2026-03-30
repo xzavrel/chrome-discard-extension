@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* ─── Reset & base ──────────────────────────────────────────────────── */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,8 +20,6 @@
   --font:        'Inter', system-ui, sans-serif;
   --shadow:      0 4px 20px rgba(0,0,0,.45);
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 body {
   font-family: var(--font);

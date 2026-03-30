@@ -201,13 +201,13 @@ function openRuleForm(rule = null) {
   const details = document.getElementById('rule-form-details');
   details.open = true;
 
-  document.getElementById('rule-id').value          = rule?.id || '';
-  document.getElementById('rule-mode').value        = rule?.mode || 'include';
-  document.getElementById('rule-field').value       = rule?.field || 'url';
-  document.getElementById('rule-match-type').value  = rule?.matchType || 'substring';
-  document.getElementById('rule-pattern').value     = rule?.pattern || '';
+  document.getElementById('rule-id').value = rule?.id || '';
+  document.getElementById('rule-mode').value = rule?.mode || 'include';
+  document.getElementById('rule-field').value = rule?.field || 'url';
+  document.getElementById('rule-match-type').value = rule?.matchType || 'substring';
+  document.getElementById('rule-pattern').value = rule?.pattern || '';
   document.getElementById('rule-min-inactive').value = rule?.minInactiveMinutes ?? 0;
-  document.getElementById('rule-enabled').checked   = rule?.enabled ?? true;
+  document.getElementById('rule-enabled').checked = rule?.enabled ?? true;
   document.getElementById('regex-error').classList.add('hidden');
 
   document.getElementById('rule-form-toggle').textContent =
@@ -221,13 +221,13 @@ function closeRuleForm() {
 }
 
 function collectRule() {
-  const id           = document.getElementById('rule-id').value || uid();
-  const mode         = document.getElementById('rule-mode').value;
-  const field        = document.getElementById('rule-field').value;
-  const matchType    = document.getElementById('rule-match-type').value;
-  const pattern      = document.getElementById('rule-pattern').value.trim();
-  const minInactive  = parseInt(document.getElementById('rule-min-inactive').value, 10) || 0;
-  const enabled      = document.getElementById('rule-enabled').checked;
+  const id = document.getElementById('rule-id').value || uid();
+  const mode = document.getElementById('rule-mode').value;
+  const field = document.getElementById('rule-field').value;
+  const matchType = document.getElementById('rule-match-type').value;
+  const pattern = document.getElementById('rule-pattern').value.trim();
+  const minInactive = parseInt(document.getElementById('rule-min-inactive').value, 10) || 0;
+  const enabled = document.getElementById('rule-enabled').checked;
   return { id, enabled, mode, matchType, field, pattern, minInactiveMinutes: minInactive };
 }
 
@@ -244,9 +244,9 @@ function showSaveStatus() {
 function exportSettings() {
   const json = JSON.stringify(settings, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = 'tab-discarder-settings.json';
   a.click();
   URL.revokeObjectURL(url);
@@ -322,10 +322,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Collapsed-group discard
   function addCollapsedGroup() {
-    const nameInp  = document.getElementById('newCollapsedGroupName');
+    const nameInp = document.getElementById('newCollapsedGroupName');
     const delayInp = document.getElementById('newCollapsedGroupDelay');
-    const name     = nameInp.value.trim();
-    const delay    = Math.max(0, parseInt(delayInp.value, 10) || 0);
+    const name = nameInp.value.trim();
+    const delay = Math.max(0, parseInt(delayInp.value, 10) || 0);
     if (!settings.collapsedDiscardGroups) settings.collapsedDiscardGroups = [];
     if (!name) return;
     // Prevent duplicates
@@ -334,7 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
     settings.collapsedDiscardGroups.push({ name, delayMinutes: delay });
-    nameInp.value  = '';
+    nameInp.value = '';
     delayInp.value = '5';
     renderCollapsedGroups();
   }
@@ -346,8 +346,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Rule form – validate regex live
   document.getElementById('rule-pattern').addEventListener('input', () => {
     const matchType = document.getElementById('rule-match-type').value;
-    const pattern   = document.getElementById('rule-pattern').value;
-    const errEl     = document.getElementById('regex-error');
+    const pattern = document.getElementById('rule-pattern').value;
+    const errEl = document.getElementById('regex-error');
     if (matchType === 'regex' && pattern && !isValidRegex(pattern)) {
       errEl.classList.remove('hidden');
     } else {

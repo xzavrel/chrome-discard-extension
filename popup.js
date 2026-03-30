@@ -25,10 +25,14 @@ async function refreshCount() {
 
 async function refreshAutoStatus() {
   const stored = await chrome.storage.local.get('settings');
-  const settings = stored.settings || {};
+  const settings = {
+    autoDiscard: true,
+    inactivityMinutes: 30,
+    ...(stored.settings || {}),
+  };
   const el = document.getElementById('auto-status');
   if (settings.autoDiscard) {
-    el.textContent = `Auto: on (${settings.inactivityMinutes ?? 30} min)`;
+    el.textContent = `Auto: on (${settings.inactivityMinutes} min)`;
     el.classList.add('on');
   } else {
     el.textContent = 'Auto: off';

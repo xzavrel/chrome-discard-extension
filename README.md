@@ -226,10 +226,12 @@ no `<all_urls>`, no `scripting` permission is involved at any point.
 6. **No cross-profile support** — Each Chrome profile runs its own extension
    instance with separate storage.
 
-7. **Group rename after collapse** — If a tab group is renamed after being
-   collapsed, the pending alarm is keyed by group ID (not name). The alarm will
-   still fire and the discard will proceed using the group's current name at
-   alarm time.
+7. **Group rename after collapse** — If a tab group is renamed while collapsed,
+   the pending discard alarm may be cleared. The extension looks up group
+   configuration by the current group name on every `tabGroups.onUpdated` event,
+   so renaming a collapsed group to a name not in `collapsedDiscardGroups` will
+   cancel the scheduled discard. The discard will only resume if the group is
+   collapsed again under a matching name.
 
 ---
 
