@@ -3,12 +3,13 @@
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  autoDiscard: false,
+  autoDiscard: true,
   inactivityMinutes: 30,
   includePinned: false,
   includeFile: false,
   ignoredGroups: [],
   ignoredUrlPatterns: [],
+  collapsedDiscardGroups: [],
   rules: [],
 };
 
@@ -88,6 +89,46 @@ function renderIgnoredUrls() {
   });
 }
 
+/** Render the collapsed-discard group list (object model: { name, delayMinutes }). */
+function renderCollapsedGroups() {
+  const list = settings.collapsedDiscardGroups || [];
+  const container = document.getElementById('collapsed-groups-list');
+  container.innerHTML = '';
+
+  if (!list.length) {
+    container.innerHTML = '<span class="empty-hint">None added yet.</span>';
+    return;
+  }
+
+  for (const entry of list) {
+    const row = document.createElement('div');
+    row.className = 'collapsed-group-row';
+
+    const name = document.createElement('span');
+    name.className = 'collapsed-group-name';
+    name.textContent = entry.name;
+
+    const delay = document.createElement('span');
+    delay.className = 'collapsed-group-delay';
+    delay.textContent = entry.delayMinutes > 0
+      ? `${entry.delayMinutes} min`
+      : 'immediate';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-icon danger';
+    delBtn.title = 'Remove';
+    delBtn.textContent = '🗑';
+    delBtn.addEventListener('click', () => {
+      settings.collapsedDiscardGroups =
+        (settings.collapsedDiscardGroups || []).filter(e => e.name !== entry.name);
+      renderCollapsedGroups();
+    });
+
+    row.append(name, delay, delBtn);
+    container.appendChild(row);
+  }
+}
+
 function renderRules() {
   const container = document.getElementById('rules-list');
   container.innerHTML = '';
@@ -160,13 +201,13 @@ function openRuleForm(rule = null) {
   const details = document.getElementById('rule-form-details');
   details.open = true;
 
-  document.getElementById('rule-id').value          = rule?.id || '';
-  document.getElementById('rule-mode').value        = rule?.mode || 'include';
-  document.getElementById('rule-field').value       = rule?.field || 'url';
-  document.getElementById('rule-match-type').value  = rule?.matchType || 'substring';
-  document.getElementById('rule-pattern').value     = rule?.pattern || '';
+  document.getElementById('rule-id').value = rule?.id || '';
+  document.getElementById('rule-mode').value = rule?.mode || 'include';
+  document.getElementById('rule-field').value = rule?.field || 'url';
+  document.getElementById('rule-match-type').value = rule?.matchType || 'substring';
+  document.getElementById('rule-pattern').value = rule?.pattern || '';
   document.getElementById('rule-min-inactive').value = rule?.minInactiveMinutes ?? 0;
-  document.getElementById('rule-enabled').checked   = rule?.enabled ?? true;
+  document.getElementById('rule-enabled').checked = rule?.enabled ?? true;
   document.getElementById('regex-error').classList.add('hidden');
 
   document.getElementById('rule-form-toggle').textContent =
@@ -180,13 +221,13 @@ function closeRuleForm() {
 }
 
 function collectRule() {
-  const id           = document.getElementById('rule-id').value || uid();
-  const mode         = document.getElementById('rule-mode').value;
-  const field        = document.getElementById('rule-field').value;
-  const matchType    = document.getElementById('rule-match-type').value;
-  const pattern      = document.getElementById('rule-pattern').value.trim();
-  const minInactive  = parseInt(document.getElementById('rule-min-inactive').value, 10) || 0;
-  const enabled      = document.getElementById('rule-enabled').checked;
+  const id = document.getElementById('rule-id').value || uid();
+  const mode = document.getElementById('rule-mode').value;
+  const field = document.getElementById('rule-field').value;
+  const matchType = document.getElementById('rule-match-type').value;
+  const pattern = document.getElementById('rule-pattern').value.trim();
+  const minInactive = parseInt(document.getElementById('rule-min-inactive').value, 10) || 0;
+  const enabled = document.getElementById('rule-enabled').checked;
   return { id, enabled, mode, matchType, field, pattern, minInactiveMinutes: minInactive };
 }
 
@@ -203,9 +244,9 @@ function showSaveStatus() {
 function exportSettings() {
   const json = JSON.stringify(settings, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = 'tab-discarder-settings.json';
   a.click();
   URL.revokeObjectURL(url);
@@ -236,6 +277,7 @@ function renderAll() {
   renderGlobal();
   renderIgnoredGroups();
   renderIgnoredUrls();
+  renderCollapsedGroups();
   renderRules();
 }
 
@@ -278,11 +320,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Enter') { e.preventDefault(); addIgnoredUrl(); }
   });
 
+  // Collapsed-group discard
+  function addCollapsedGroup() {
+    const nameInp = document.getElementById('newCollapsedGroupName');
+    const delayInp = document.getElementById('newCollapsedGroupDelay');
+    const name = nameInp.value.trim();
+    const delay = Math.max(0, parseInt(delayInp.value, 10) || 0);
+    if (!settings.collapsedDiscardGroups) settings.collapsedDiscardGroups = [];
+    if (!name) return;
+    // Prevent duplicates
+    if (settings.collapsedDiscardGroups.some(e => e.name === name)) {
+      nameInp.value = '';
+      return;
+    }
+    settings.collapsedDiscardGroups.push({ name, delayMinutes: delay });
+    nameInp.value = '';
+    delayInp.value = '5';
+    renderCollapsedGroups();
+  }
+  document.getElementById('btn-add-collapsed').addEventListener('click', addCollapsedGroup);
+  document.getElementById('newCollapsedGroupName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addCollapsedGroup(); }
+  });
+
   // Rule form – validate regex live
   document.getElementById('rule-pattern').addEventListener('input', () => {
     const matchType = document.getElementById('rule-match-type').value;
-    const pattern   = document.getElementById('rule-pattern').value;
-    const errEl     = document.getElementById('regex-error');
+    const pattern = document.getElementById('rule-pattern').value;
+    const errEl = document.getElementById('regex-error');
     if (matchType === 'regex' && pattern && !isValidRegex(pattern)) {
       errEl.classList.remove('hidden');
     } else {

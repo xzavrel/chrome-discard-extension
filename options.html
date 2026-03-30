@@ -50,10 +50,32 @@
       <h2>Ignored tab groups</h2>
       <p class="hint">Tabs in these groups are never discarded.</p>
       <div class="tag-input-row">
+        <label for="newIgnoredGroup" class="sr-only">Ignored group name</label>
         <input type="text" id="newIgnoredGroup" placeholder="Group name…" />
         <button id="btn-add-group" class="btn-small">Add</button>
       </div>
       <div id="ignored-groups-list" class="tag-list"></div>
+    </section>
+
+    <!-- ── Collapsed-group discard ─────────────────────────── -->
+    <section class="card" id="section-collapsed">
+      <h2>Discard when group is collapsed</h2>
+      <p class="hint">
+        Tabs inside these groups are discarded after the configured delay once the
+        group is collapsed. Set delay to <strong>0</strong> for immediate discard.
+        Expanding the group before the delay expires cancels the pending discard.
+        User-defined <strong>exclude</strong> rules can still protect individual tabs.
+      </p>
+      <div id="collapsed-groups-list" class="collapsed-list"></div>
+      <div class="collapsed-add-row">
+        <label for="newCollapsedGroupName" class="sr-only">Group name</label>
+        <input type="text" id="newCollapsedGroupName" placeholder="Group name…" />
+        <label for="newCollapsedGroupDelay" class="sr-only">Delay in minutes</label>
+        <input type="number" id="newCollapsedGroupDelay" min="0" max="1440" step="1"
+               value="5" title="Delay in minutes (0 = immediate)" />
+        <span class="delay-unit">min</span>
+        <button id="btn-add-collapsed" class="btn-small">Add</button>
+      </div>
     </section>
 
     <!-- ── Ignored URL patterns ───────────────────────────── -->
@@ -61,6 +83,7 @@
       <h2>Ignored URL patterns</h2>
       <p class="hint">Tabs whose URL contains any of these substrings are never discarded.</p>
       <div class="tag-input-row">
+        <label for="newIgnoredUrl" class="sr-only">Ignored URL pattern</label>
         <input type="text" id="newIgnoredUrl" placeholder="e.g. meet.google.com" />
         <button id="btn-add-url" class="btn-small">Add</button>
       </div>
