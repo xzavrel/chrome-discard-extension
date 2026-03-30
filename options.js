@@ -3,12 +3,13 @@
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  autoDiscard: false,
+  autoDiscard: true,
   inactivityMinutes: 30,
   includePinned: false,
   includeFile: false,
   ignoredGroups: [],
   ignoredUrlPatterns: [],
+  collapsedDiscardGroups: [],
   rules: [],
 };
 
@@ -86,6 +87,46 @@ function renderIgnoredUrls() {
     settings.ignoredUrlPatterns = settings.ignoredUrlPatterns.filter(p => p !== pat);
     renderIgnoredUrls();
   });
+}
+
+/** Render the collapsed-discard group list (object model: { name, delayMinutes }). */
+function renderCollapsedGroups() {
+  const list = settings.collapsedDiscardGroups || [];
+  const container = document.getElementById('collapsed-groups-list');
+  container.innerHTML = '';
+
+  if (!list.length) {
+    container.innerHTML = '<span class="empty-hint">None added yet.</span>';
+    return;
+  }
+
+  for (const entry of list) {
+    const row = document.createElement('div');
+    row.className = 'collapsed-group-row';
+
+    const name = document.createElement('span');
+    name.className = 'collapsed-group-name';
+    name.textContent = entry.name;
+
+    const delay = document.createElement('span');
+    delay.className = 'collapsed-group-delay';
+    delay.textContent = entry.delayMinutes > 0
+      ? `${entry.delayMinutes} min`
+      : 'immediate';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-icon danger';
+    delBtn.title = 'Remove';
+    delBtn.textContent = '🗑';
+    delBtn.addEventListener('click', () => {
+      settings.collapsedDiscardGroups =
+        (settings.collapsedDiscardGroups || []).filter(e => e.name !== entry.name);
+      renderCollapsedGroups();
+    });
+
+    row.append(name, delay, delBtn);
+    container.appendChild(row);
+  }
 }
 
 function renderRules() {
@@ -236,6 +277,7 @@ function renderAll() {
   renderGlobal();
   renderIgnoredGroups();
   renderIgnoredUrls();
+  renderCollapsedGroups();
   renderRules();
 }
 
@@ -276,6 +318,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add-url').addEventListener('click', addIgnoredUrl);
   document.getElementById('newIgnoredUrl').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); addIgnoredUrl(); }
+  });
+
+  // Collapsed-group discard
+  function addCollapsedGroup() {
+    const nameInp  = document.getElementById('newCollapsedGroupName');
+    const delayInp = document.getElementById('newCollapsedGroupDelay');
+    const name     = nameInp.value.trim();
+    const delay    = Math.max(0, parseInt(delayInp.value, 10) || 0);
+    if (!settings.collapsedDiscardGroups) settings.collapsedDiscardGroups = [];
+    if (!name) return;
+    // Prevent duplicates
+    if (settings.collapsedDiscardGroups.some(e => e.name === name)) {
+      nameInp.value = '';
+      return;
+    }
+    settings.collapsedDiscardGroups.push({ name, delayMinutes: delay });
+    nameInp.value  = '';
+    delayInp.value = '5';
+    renderCollapsedGroups();
+  }
+  document.getElementById('btn-add-collapsed').addEventListener('click', addCollapsedGroup);
+  document.getElementById('newCollapsedGroupName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addCollapsedGroup(); }
   });
 
   // Rule form – validate regex live

@@ -19,12 +19,13 @@ const ALARM_PERIOD = 1; // minutes – granularity of alarm; actual inactivity t
 // ─── Default settings ────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  autoDiscard: false,          // automatic periodic discard enabled
+  autoDiscard: true,           // enable periodic auto-discard by default
   inactivityMinutes: 30,       // discard tabs inactive longer than this
   includePinned: false,        // include pinned tabs
   includeFile: false,          // include file:// tabs
   ignoredGroups: [],           // group names to never discard
   ignoredUrlPatterns: [],      // URL substrings to never discard
+  collapsedDiscardGroups: [],  // Array of { name: string, delayMinutes: number }
   rules: [],                   // user-defined rules (see data model below)
 };
 
@@ -94,17 +95,28 @@ function matchesPattern(value, matchType, pattern) {
 }
 
 /**
- * Fetch tab group name for a given groupId.
- * Returns '' if not in a group or API unavailable.
+ * Fetch tab group info for a given groupId.
+ * Returns { name: string, collapsed: boolean }.
  */
-async function getGroupName(groupId) {
-  if (!groupId || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return '';
+async function getGroupInfo(groupId) {
+  if (!groupId || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+    return { name: '', collapsed: false };
+  }
   try {
     const group = await chrome.tabGroups.get(groupId);
-    return group.title || '';
+    return { name: group.title || '', collapsed: group.collapsed === true };
   } catch {
-    return '';
+    return { name: '', collapsed: false };
   }
+}
+
+/**
+ * Find collapsed-discard config for a given group name.
+ * Returns { name, delayMinutes } or null.
+ */
+function findCollapsedConfig(groupName, settings) {
+  if (!groupName) return null;
+  return (settings.collapsedDiscardGroups || []).find(c => c.name === groupName) || null;
 }
 
 /**
@@ -140,24 +152,25 @@ function globalProtection(tab, settings) {
 }
 
 /**
- * Core matching logic.
- * Returns true if a tab should be discarded given all rules + settings.
+ * Core matching logic for periodic / manual discard.
+ * Collapsed-group discard is handled separately via tabGroups.onUpdated.
+ * @param {chrome.tabs.Tab} tab
+ * @param {object} settings
+ * @param {{ name: string, collapsed: boolean }} groupInfo
  */
-async function shouldDiscard(tab, settings, groupName) {
+async function shouldDiscard(tab, settings, groupInfo) {
   const { safe } = globalProtection(tab, settings);
   if (!safe) return false;
 
-  // Ignored groups
+  const groupName = groupInfo.name;
+
   if (groupName && settings.ignoredGroups.includes(groupName)) return false;
 
   const inactiveMins = tabActivity[String(tab.id)]
     ? minutesAgo(tabActivity[String(tab.id)])
-    : Infinity; // never activated → very old
+    : Infinity;
 
-  // Apply user rules
   const rules = (settings.rules || []).filter(r => r.enabled);
-
-  // Collect include/exclude decisions
   let hasIncludeMatch = false;
   let hasExcludeMatch = false;
 
@@ -169,7 +182,6 @@ async function shouldDiscard(tab, settings, groupName) {
 
     if (!matchesPattern(fieldValue, rule.matchType, rule.pattern)) continue;
 
-    // Check inactivity threshold for this rule
     const minMins = Number(rule.minInactiveMinutes) || 0;
     if (minMins > 0 && inactiveMins < minMins) continue;
 
@@ -177,15 +189,12 @@ async function shouldDiscard(tab, settings, groupName) {
     if (rule.mode === 'include') hasIncludeMatch = true;
   }
 
-  // Exclude rules take priority
   if (hasExcludeMatch) return false;
 
-  // If there are include rules and none matched → skip (rules are non-empty)
   if (rules.filter(r => r.mode === 'include').length > 0 && !hasIncludeMatch) {
     return false;
   }
 
-  // No include rules at all → fall back to global inactivity threshold
   if (rules.filter(r => r.mode === 'include').length === 0) {
     if (settings.autoDiscard && inactiveMins < settings.inactivityMinutes) {
       return false;
@@ -196,19 +205,60 @@ async function shouldDiscard(tab, settings, groupName) {
 }
 
 /**
- * Collect all tabs with their group names.
- * Returns Array<{ tab, groupName }>.
+ * Discard all eligible tabs in a specific group.
+ * Respects globalProtection + exclude rules, but bypasses inactivity / include rules
+ * (collapsed-group discard is intentional regardless of inactivity).
+ */
+async function discardGroupById(groupId, groupName, settings) {
+  const tabs = await chrome.tabs.query({ groupId });
+  const excludeRules = (settings.rules || []).filter(r => r.enabled && r.mode === 'exclude');
+  let count = 0;
+
+  for (const tab of tabs) {
+    const { safe } = globalProtection(tab, settings);
+    if (!safe) continue;
+
+    // Honour user exclude rules even on collapsed-group discard
+    let excluded = false;
+    for (const rule of excludeRules) {
+      let fieldValue = '';
+      if (rule.field === 'url')       fieldValue = tab.url || '';
+      if (rule.field === 'title')     fieldValue = tab.title || '';
+      if (rule.field === 'groupName') fieldValue = groupName;
+      if (matchesPattern(fieldValue, rule.matchType, rule.pattern)) {
+        excluded = true;
+        break;
+      }
+    }
+    if (excluded) continue;
+
+    await discardTab(tab.id);
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Collect all tabs with their group info.
+ * Returns Array<{ tab, groupInfo: { name, collapsed } }>.
  */
 async function getAllTabsWithGroups(windowId) {
   const query = windowId ? { windowId } : {};
   const tabs = await chrome.tabs.query(query);
 
-  const grouped = await Promise.all(tabs.map(async tab => ({
-    tab,
-    groupName: await getGroupName(tab.groupId),
-  })));
+  // Cache group lookups to avoid redundant API calls for the same groupId
+  const groupCache = new Map();
+  async function cachedGroupInfo(groupId) {
+    if (!groupCache.has(groupId)) {
+      groupCache.set(groupId, await getGroupInfo(groupId));
+    }
+    return groupCache.get(groupId);
+  }
 
-  return grouped;
+  return Promise.all(tabs.map(async tab => ({
+    tab,
+    groupInfo: await cachedGroupInfo(tab.groupId),
+  })));
 }
 
 // ─── Discard actions ─────────────────────────────────────────────────────────
@@ -228,8 +278,8 @@ async function discardAllInactive() {
   const items = await getAllTabsWithGroups();
   let count = 0;
 
-  for (const { tab, groupName } of items) {
-    if (await shouldDiscard(tab, settings, groupName)) {
+  for (const { tab, groupInfo } of items) {
+    if (await shouldDiscard(tab, settings, groupInfo)) {
       await discardTab(tab.id);
       count++;
     }
@@ -247,12 +297,12 @@ async function discardCurrentGroup(windowId) {
   const groupId = activeTab.groupId;
   if (!groupId || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return 0;
 
-  const groupName = await getGroupName(groupId);
+  const groupInfo = await getGroupInfo(groupId);
   let count = 0;
 
   const groupTabs = tabs.filter(t => t.groupId === groupId);
   for (const tab of groupTabs) {
-    if (await shouldDiscard(tab, settings, groupName)) {
+    if (await shouldDiscard(tab, settings, groupInfo)) {
       await discardTab(tab.id);
       count++;
     }
@@ -269,9 +319,10 @@ async function runRulesNow() {
   const includeRules = (settings.rules || []).filter(r => r.enabled && r.mode === 'include');
   if (includeRules.length === 0) return 0;
 
-  for (const { tab, groupName } of items) {
+  for (const { tab, groupInfo } of items) {
     const { safe } = globalProtection(tab, settings);
     if (!safe) continue;
+    const groupName = groupInfo.name;
     if (groupName && settings.ignoredGroups.includes(groupName)) continue;
 
     for (const rule of includeRules) {
@@ -297,8 +348,8 @@ async function updateBadge() {
   const items = await getAllTabsWithGroups();
   let count = 0;
 
-  for (const { tab, groupName } of items) {
-    if (await shouldDiscard(tab, settings, groupName)) count++;
+  for (const { tab, groupInfo } of items) {
+    if (await shouldDiscard(tab, settings, groupInfo)) count++;
   }
 
   const text = count > 0 ? String(count) : '';
@@ -309,16 +360,37 @@ async function updateBadge() {
 // ─── Alarm handling ───────────────────────────────────────────────────────────
 
 async function setupAlarm(settings) {
-  await chrome.alarms.clearAll();
-  if (settings.autoDiscard) {
-    await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD });
-  }
+  // Always keep the periodic alarm running — rules need it even when the
+  // global inactivity threshold (autoDiscard) is turned off.
+  await chrome.alarms.clear(ALARM_NAME);
+  await chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD });
 }
 
 chrome.alarms.onAlarm.addListener(async alarm => {
-  if (alarm.name !== ALARM_NAME) return;
-  await discardAllInactive();
-  await updateBadge();
+  // ── Periodic auto-discard ──────────────────────────────────────────────────
+  if (alarm.name === ALARM_NAME) {
+    await discardAllInactive();
+    await updateBadge();
+    return;
+  }
+
+  // ── Delayed collapsed-group discard ────────────────────────────────────────
+  // Alarm name format: 'collapse-group-{groupId}'
+  if (alarm.name.startsWith('collapse-group-')) {
+    const groupId = parseInt(alarm.name.slice('collapse-group-'.length), 10);
+    if (isNaN(groupId)) return;
+    try {
+      const group = await chrome.tabGroups.get(groupId);
+      // Only proceed if the group is still collapsed when alarm fires
+      if (group.collapsed) {
+        const settings = await loadSettings();
+        await discardGroupById(groupId, group.title || '', settings);
+        await updateBadge();
+      }
+    } catch {
+      // Group no longer exists – nothing to do
+    }
+  }
 });
 
 // ─── Tab activity tracking ────────────────────────────────────────────────────
@@ -351,6 +423,39 @@ chrome.tabs.onRemoved.addListener(async tabId => {
 
 chrome.tabs.onUpdated.addListener(async () => {
   await updateBadge();
+});
+
+// ─── Tab group collapse tracking ─────────────────────────────────────────────
+
+chrome.tabGroups.onUpdated.addListener(async group => {
+  const settings = await loadSettings();
+  const config = findCollapsedConfig(group.title || '', settings);
+  const alarmName = `collapse-group-${group.id}`;
+
+  if (!config) {
+    // Group not in the list – ensure no stale alarm exists
+    await chrome.alarms.clear(alarmName);
+    return;
+  }
+
+  if (group.collapsed) {
+    const delayMins = Number(config.delayMinutes) || 0;
+    if (delayMins > 0) {
+      // Schedule a one-shot alarm; Chrome persists it even if SW is killed
+      await chrome.alarms.create(alarmName, { delayInMinutes: delayMins });
+      console.info(`[discarder] Group "${group.title}" collapsed – discard in ${delayMins} min`);
+    } else {
+      // Delay is 0 → discard immediately
+      await discardGroupById(group.id, group.title || '', settings);
+      await updateBadge();
+    }
+  } else {
+    // Group was expanded before the alarm fired – cancel the pending discard
+    const cancelled = await chrome.alarms.clear(alarmName);
+    if (cancelled) {
+      console.info(`[discarder] Group "${group.title}" expanded – discard cancelled`);
+    }
+  }
 });
 
 // ─── Settings change listener ─────────────────────────────────────────────────
@@ -418,8 +523,8 @@ async function handleMessage(message) {
       const settings = await loadSettings();
       const items = await getAllTabsWithGroups();
       let count = 0;
-      for (const { tab, groupName } of items) {
-        if (await shouldDiscard(tab, settings, groupName)) count++;
+      for (const { tab, groupInfo } of items) {
+        if (await shouldDiscard(tab, settings, groupInfo)) count++;
       }
       return { count };
     }
